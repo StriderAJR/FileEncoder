@@ -143,19 +143,13 @@ namespace FileEncoder
             string fileName;
 
             // get command
-            if (args.Contains("-c") || args.Contains("--command"))
+            if (args.Contains("encode"))
             {
-                int index = Array.IndexOf(args, "-c");
-                if(index == -1) index = Array.IndexOf(args, "--command");
-
-                string str = args[index + 1];
-                if (str != "decode" && str != "encode")
-                {
-                    Console.WriteLine("Unknown command! Call -h or --help for more info.");
-                    return;
-                }
-
-                cmd = str == "encode" ? Command.Encode : Command.Decode;
+                cmd = Command.Encode;
+            }
+            else if (args.Contains("decode"))
+            {
+                cmd = Command.Decode;
             }
             else
             {

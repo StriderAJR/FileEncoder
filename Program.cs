@@ -1,103 +1,349 @@
 ﻿using System;
-using System.Data;
 using System.IO;
 using System.Linq;
 using System.Windows.Forms;
 
+// Все напихано в один файл для удобства копирования программы за один присест
+
 namespace FileEncoder
 {
-    public enum Command
-    {
-        Encode, Decode
-    }
-
+    /// <summary>
+    /// Источник получения данных
+    /// </summary>
     public enum Source
     {
-        FromFile, FromBuffer
+        /// <summary>
+        /// Из файла
+        /// </summary>
+        File,
+        /// <summary>
+        /// Из буфера обмена
+        /// </summary>
+        Buffer
+    }
+    
+    /// <summary>
+    /// Общий класс для всех команд
+    /// </summary>
+    public abstract class Command
+    {
+        /// <summary>
+        /// Выполнить команду
+        /// </summary>
+        public abstract void Execute();
     }
 
-    // FileEncoder -h|--help
-    // FileEncoder -v|--version
-    // FileEncoder -s file -c encode -f filename.ext
-    // FileEncoder --source buffer --command decode -file filename_ext.txt
-    public class FileEncoder
+    /// <summary>
+    /// Общая команда для всех команд конвертации
+    /// </summary>
+    public abstract class ConvertCommand : Command
     {
-        private readonly string binaryFilePath;
-        private readonly string base64FilePath;
-        private readonly Command command;
-        private readonly Source source;
+        /// <summary>
+        /// Источник данных
+        /// </summary>
+        protected Source Source { get; }
+        /// <summary>
+        /// Путь до файла, указанный пользователем
+        /// </summary>
+        protected string FilePath { get; }
+        /// <summary>
+        /// Путь до оригинального файла 
+        /// </summary>
+        protected string BinaryFilePath;
+        /// <summary>
+        /// Путь до файла, в котором хранится base64 строка, полученная из оригинального файла
+        /// </summary>
+        protected string Base64FilePath;
 
-        public FileEncoder(Command command, Source source, string filePath)
+        /// <summary>
+        /// Конструктор
+        /// </summary>
+        /// <param name="source">Источник данных</param>
+        /// <param name="filePath">Путь до файла, с которым будет работать команда</param>
+        protected ConvertCommand(Source source, string filePath)
         {
-            if (command == Command.Decode && source == Source.FromFile && !File.Exists(filePath))
+            Source = source;
+            FilePath = filePath;
+        }
+    }
+
+    /// <summary>
+    /// Команда преобразования оригинального файла в base64 строку
+    /// </summary>
+    public class EncodeCommand : ConvertCommand
+    {
+        public EncodeCommand(Source source, string filePath) : base(source, filePath) { }
+
+        /// <inheritdoc/>
+        public override void Execute()
+        {
+            Base64FilePath = GetBase64FilePath();
+            BinaryFilePath = FilePath;
+
+            if (!File.Exists(BinaryFilePath))
             {
-                Console.WriteLine("Specified file doesn't exist! Change source to buffer or enter valid file name.");
-                Environment.Exit(0);
+                throw new Exception($"File {BinaryFilePath} not found");
             }
-
-            if (command == Command.Encode)
-            {
-                base64FilePath = GetBase64FilePath(filePath);
-                binaryFilePath = filePath;
-            }
-            else
-            {
-                if (source == Source.FromFile)
-                {
-                    binaryFilePath = GetBinaryFilePath(filePath);
-                    base64FilePath = filePath;
-                }
-                else
-                {
-                    binaryFilePath = filePath;
-                }
-            }
-
-            this.command = command;
-            this.source = source;
+            
+            Byte[] bytes = File.ReadAllBytes(BinaryFilePath);
+            string base64String = Convert.ToBase64String(bytes);
+            WriteBase64String(base64String);
         }
 
-        private string GetBase64FilePath(string filePath)
+        /// <summary>
+        /// Получить путь до файла, который будет хранить base64 строку
+        /// </summary>
+        /// <param name="filePath">Путь до оригинального файла</param>
+        /// <returns>Путь до файла с base64 строкой</returns>
+        private string GetBase64FilePath()
         {
-            string outputFileName = Path.GetFileName(filePath).Replace(".", "_") + ".txt";
-            return Path.Combine(new[] { Path.GetPathRoot(filePath), outputFileName });
+            string outputFileName = Path.GetFileName(FilePath).Replace(".", "_") + ".txt";
+            return Path.Combine(new[] {Path.GetPathRoot(FilePath), outputFileName});
         }
 
-        private string GetBinaryFilePath(string filePath)
+        /// <summary>
+        /// Сохранить base64 строку (преобразованный оригинальный файл) в файл
+        /// </summary>
+        /// <param name="source">Куда сохранить base64 строку</param>
+        /// <param name="base64String">Преобразованный в base64 оригинальный файл</param>
+        private void WriteBase64String(string base64String)
         {
-            string fileName = Path.GetFileNameWithoutExtension(filePath).Replace("_", ".");
-            return Path.Combine(new[] { Path.GetPathRoot(fileName), fileName });
-        }
-
-        private string ReadBase64String(Source source)
-        {
-            if (source == Source.FromBuffer)
-                return Clipboard.GetText(TextDataFormat.Text);
-            return File.ReadAllText(base64FilePath);
-        }
-
-        private void WriteBase64String(Source source, string base64String)
-        {
-            if (source == Source.FromBuffer)
+            if (Source == Source.Buffer)
                 Clipboard.SetText(base64String, TextDataFormat.Text);
             else
-                File.WriteAllText(base64FilePath, base64String);
+                File.WriteAllText(Base64FilePath, base64String);
+        }
+    }
+
+    /// <summary>
+    /// Команда преобразования base64 строки в файл
+    /// </summary>
+    public class DecodeCommand : ConvertCommand
+    {
+        public DecodeCommand(Source source, string filePath) : base(source, filePath) { }
+
+        /// <inheritdoc/>
+        public override void Execute()
+        {
+            if (Source == Source.File)
+            {
+                BinaryFilePath = GetBinaryFilePath();
+                Base64FilePath = FilePath;
+                
+                if (!File.Exists(Base64FilePath))
+                {
+                    throw new Exception($"File {Base64FilePath} not found");
+                }
+            }
+            else
+            {
+                BinaryFilePath = FilePath;
+            }
+
+            string base64String = ReadBase64String();
+            byte[] file = Convert.FromBase64String(base64String);
+            File.WriteAllBytes(BinaryFilePath, file);
         }
 
-        public void Execute()
+        /// <summary>
+        /// Получить путь, куда сохранить оригинальный файл после преобразования
+        /// </summary>
+        /// <param name="filePath">Путь до файла с base64 строкой</param>
+        /// <returns>Путь до будущего ориггинального файла</returns>
+        private string GetBinaryFilePath()
         {
-            if (command == Command.Decode)
+            string fileName = Path.GetFileNameWithoutExtension(BinaryFilePath).Replace("_", ".");
+            return Path.Combine(new[] {Path.GetPathRoot(fileName), fileName});
+        }
+
+        /// <summary>
+        /// Считать base64 строку
+        /// </summary>
+        /// <param name="source">Откуда считать base64 строку</param>
+        /// <returns>base64 строку - закодированный файл</returns>
+        private string ReadBase64String()
+        {
+            return Source == Source.Buffer 
+                ? Clipboard.GetText(TextDataFormat.Text) 
+                : File.ReadAllText(Base64FilePath);
+        }
+    }
+
+    /// <summary>
+    /// Команда вывода версии программы
+    /// </summary>
+    public class PrintVersionCommand : Command
+    {
+        /// <inheritdoc/>
+        public override void Execute()
+        {
+            Console.WriteLine($"{typeof(Program).Assembly.GetName().Version}v");
+        }
+    }
+
+    /// <summary>
+    /// Команда вывода помощи
+    /// </summary>
+    public class PrintHelpCommand : Command
+    {
+        /// <inheritdoc/>
+        public override void Execute()
+        {
+            Console.WriteLine("\t-h|--help\t\tHelp information");
+            Console.WriteLine("\t-v|--version -v\t\tProgram version");
+            Console.WriteLine("\t-s|--source -s\t\tsource of input: buffer or file");
+            Console.WriteLine("\t-f|--file -f\t\tOutput file name");
+            Console.WriteLine("\nExamples:");
+            Console.WriteLine("\tFileEncoder -s file -c encode -f filename.ext");
+            Console.WriteLine("\tFileEncoder --source buffer --command decode -file filename_ext.txt");
+        }
+    }
+
+    /// <summary>
+    /// Пустая команда, в которой не заданы параметры
+    /// </summary>
+    public class EmptyCommand : Command
+    {
+        /// <inheritdoc/>
+        public override void Execute()
+        {
+            Console.WriteLine("Unknown or empty argument");
+        }
+    }
+
+    /// <summary>
+    /// Команда вывода сообщения об ошибке
+    /// </summary>
+    public class ErrorCommand : Command
+    {
+        /// <summary>
+        /// Текст сообщения об ошибке
+        /// </summary>
+        private readonly string message;
+
+        public ErrorCommand(string message)
+        {
+            this.message = message;
+        }
+
+        /// <inheritdoc/>
+        public override void Execute()
+        {
+            Console.WriteLine(message);
+        }
+    }
+
+    /// <summary>
+    /// Фабрика создания команд
+    /// </summary>
+    public static class CommandFactory
+    {
+        /// <summary>
+        /// Получить команды
+        /// </summary>
+        /// <param name="args">Параметры для создания команды</param>
+        /// <returns>Команда</returns>
+        public static Command GetCommand(string[] args)
+        {
+            if (args.Length == 0)
             {
-                string base64String = ReadBase64String(source);
-                byte[] file = Convert.FromBase64String(base64String);
-                File.WriteAllBytes(binaryFilePath, file);
+                return new EmptyCommand();
             }
-            else // encode
+
+            Source source = Source.Buffer;
+            string fileName;
+
+            if (args.Length == 1)
             {
-                Byte[] bytes = File.ReadAllBytes(binaryFilePath);
-                string base64String = Convert.ToBase64String(bytes);
-                WriteBase64String(source, base64String);
+                switch (args[0])
+                {
+                    case "-h":
+                    case "--help":
+                        return new PrintHelpCommand();
+                    case "-v":
+                    case "--version":
+                        return new PrintVersionCommand();
+                    default:
+                        if (File.Exists(args[0]))
+                        {
+                            return new EncodeCommand(Source.Buffer, args[0]);
+                        }
+
+                        return new EmptyCommand();
+                }
             }
+
+            try
+            {
+                source = GetSource(args);
+                fileName = GetFileName(args);
+            }
+            catch (NoFilePathException)
+            {
+                return new ErrorCommand("File path needed");
+            }
+            catch (UnknownSourceException)
+            {
+                return new ErrorCommand("Unknown source");
+            }
+            catch (Exception e)
+            {
+                return new ErrorCommand(e.Message);
+            }
+
+            if (args.Contains("encode"))
+            {
+                return new EncodeCommand(source, fileName);
+            }
+
+            if (args.Contains("decode"))
+            {
+                return new DecodeCommand(source, fileName);
+            }
+
+            return new EncodeCommand(source, fileName);
+        }
+
+        /// <summary>
+        /// Получить источник работы
+        /// </summary>
+        /// <param name="args">Параметры команды</param>
+        /// <returns>Источник, откуда команда должна считывать данные</returns>
+        private static Source GetSource(string[] args)
+        {
+            if (args.Contains("-s") || args.Contains("--source"))
+            {
+                int index = Array.IndexOf(args, "-s");
+                if (index == -1) index = Array.IndexOf(args, "--source");
+
+                string str = args[index + 1];
+                if (str != "buffer" && str != "file")
+                {
+                    throw new UnknownSourceException();
+                }
+
+                return str == "buffer" ? Source.Buffer : Source.File;
+            }
+
+            return Source.Buffer;
+        }
+
+        /// <summary>
+        /// Получить путь до фафйла
+        /// </summary>
+        /// <param name="args">Параметры команды</param>
+        /// <returns>Путь до файла</returns>
+        private static string GetFileName(string[] args)
+        {
+            if (args.Contains("-f") || args.Contains("--file"))
+            {
+                int index = Array.IndexOf(args, "-f");
+                if (index == -1) index = Array.IndexOf(args, "--file");
+
+                return args[index + 1];
+            }
+
+            return args[args.Length - 1];
         }
     }
 
@@ -106,88 +352,18 @@ namespace FileEncoder
         [STAThread]
         static void Main(string[] args)
         {
-            if (args.Length == 0)
-            {
-                Console.WriteLine("FileEncoder needs params! Call -h or --help for more info.");
-                return;
-            }
-
-            if (args.Length == 1)
-            {
-                if (args[0] == "-h" || args[0] == "--help")
-                {
-                    Console.WriteLine("\t-h|--help\t\tHelp information");
-                    Console.WriteLine("\t-v|--version\t\tProgram version");
-                    Console.WriteLine("\t-s|--source\t\tsource of input: buffer or file");
-                    Console.WriteLine("\t-f|--file\t\tOutput file name");
-                    Console.WriteLine("\t-c|--command\t\tCommand source execute: encode or decode");
-                    Console.WriteLine("\nExamples:");
-                    Console.WriteLine("\tFileEncoder -s file -c encode -f filename.ext");
-                    Console.WriteLine("\tFileEncoder --source buffer --command decode -file filename_ext.txt");
-                    return;
-                }
-                else if (args[0] == "-v" || args[0] == "--version")
-                {
-                    Console.WriteLine($"{typeof(Program).Assembly.GetName().Version}v");
-                    return;
-                }
-                else
-                {
-                    Console.WriteLine("Unknown argument! Call -h or --help for more info.");
-                    return;
-                }
-            }
-
-            Command cmd;
-            Source source = Source.FromBuffer;
-            string fileName;
-
-            // get command
-            if (args.Contains("encode"))
-            {
-                cmd = Command.Encode;
-            }
-            else if (args.Contains("decode"))
-            {
-                cmd = Command.Decode;
-            }
-            else
-            {
-                Console.WriteLine("You need source specify the command! Call -h or --help for more info.");
-                return;
-            }
-
-            // get source
-            if (args.Contains("-s") || args.Contains("--source"))
-            {
-                int index = Array.IndexOf(args, "-s");
-                if(index == -1) index = Array.IndexOf(args, "--source");
-
-                string str = args[index + 1];
-                if (str != "buffer" && str != "file")
-                {
-                    Console.WriteLine("Unknown source! Call -h or --help for more info.");
-                    return;
-                }
-
-                source = str == "buffer" ? Source.FromBuffer : Source.FromFile;
-            }
-
-            //get file name
-            if (args.Contains("-f") || args.Contains("--file"))
-            {
-                int index = Array.IndexOf(args, "-f");
-                if(index == -1) index = Array.IndexOf(args, "--file");
-
-                fileName = args[index + 1];
-            }
-            else
-            {
-                Console.WriteLine("You need source specify the file source write source or source read from! Call -h or --help for more info.");
-                return;
-            }
-
-            new FileEncoder(cmd, source, fileName).Execute();
+            var command = CommandFactory.GetCommand(args);
+            command.Execute();
         }
     }
+
+    /// <summary>
+    /// Ошибка в случае, если был указан неизвестный источник для работы
+    /// </summary>
+    public class UnknownSourceException : Exception { }
+
+    /// <summary>
+    /// Ошибка в случае, если не был указан путь до файла
+    /// </summary>
+    public class NoFilePathException : Exception { }
 }

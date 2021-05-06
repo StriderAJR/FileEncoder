@@ -1,6 +1,8 @@
 ﻿using System;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
+using System.Text;
 using System.Windows.Forms;
 
 // Все напихано в один файл для удобства копирования программы за один присест
@@ -85,9 +87,18 @@ namespace FileEncoder
                 throw new Exception($"File {BinaryFilePath} not found");
             }
             
+            Console.WriteLine($"Reading file {BinaryFilePath}...");
             Byte[] bytes = File.ReadAllBytes(BinaryFilePath);
+            Console.WriteLine("Converting to base64 string...");
             string base64String = Convert.ToBase64String(bytes);
-            WriteBase64String(base64String);
+            Console.WriteLine("Compressing...");
+            byte[] compressedFile = Compressor.Zip(base64String);
+            Console.WriteLine("Converting to base64 string compressed file...");
+            string compressedBase64 = Convert.ToBase64String(compressedFile);
+            
+            Console.WriteLine("Saving...");
+            WriteBase64String(compressedBase64);
+            Console.WriteLine("Done.");
         }
 
         /// <summary>
@@ -112,6 +123,21 @@ namespace FileEncoder
                 Clipboard.SetText(base64String, TextDataFormat.Text);
             else
                 File.WriteAllText(Base64FilePath, base64String);
+        }
+
+        private string ConvertToBase64String(byte[] bytes)
+        {
+            byte[] Packet = new byte[4096];
+            string b64str = "";
+            using (FileStream fs = new FileStream(file, FileMode.Open))
+            {
+                int i = Packet.Length;
+                while (i == Packet.Length)
+                {
+                    i = fs.Read(Packet, 0, Packet.Length);
+                    b64str = Convert.ToBase64String(Packet, 0, i);
+                }
+            }
         }
     }
 
@@ -140,9 +166,18 @@ namespace FileEncoder
                 BinaryFilePath = FilePath;
             }
 
-            string base64String = ReadBase64String();
+            Console.WriteLine("Reading base64 string of compressed file...");
+            string compressedBase64String = ReadBase64String();
+            Console.WriteLine("Converting to bytes...");
+            byte[] compressedFile = Convert.FromBase64String(compressedBase64String);
+            Console.WriteLine("Decompressing to base64 string...");
+            string base64String = Compressor.Unzip(compressedFile);
+            Console.WriteLine("Converting to bytes...");
             byte[] file = Convert.FromBase64String(base64String);
+            
+            Console.WriteLine("Saving file...");
             File.WriteAllBytes(BinaryFilePath, file);
+            Console.WriteLine("Done.");
         }
 
         /// <summary>
@@ -166,70 +201,6 @@ namespace FileEncoder
             return Source == Source.Buffer 
                 ? Clipboard.GetText(TextDataFormat.Text) 
                 : File.ReadAllText(Base64FilePath);
-        }
-    }
-
-    /// <summary>
-    /// Команда вывода версии программы
-    /// </summary>
-    public class PrintVersionCommand : Command
-    {
-        /// <inheritdoc/>
-        public override void Execute()
-        {
-            Console.WriteLine($"{typeof(Program).Assembly.GetName().Version}v");
-        }
-    }
-
-    /// <summary>
-    /// Команда вывода помощи
-    /// </summary>
-    public class PrintHelpCommand : Command
-    {
-        /// <inheritdoc/>
-        public override void Execute()
-        {
-            Console.WriteLine("\t-h|--help\t\tHelp information");
-            Console.WriteLine("\t-v|--version -v\t\tProgram version");
-            Console.WriteLine("\t-s|--source -s\t\tsource of input: buffer or file");
-            Console.WriteLine("\t-f|--file -f\t\tOutput file name");
-            Console.WriteLine("\nExamples:");
-            Console.WriteLine("\tFileEncoder -s file -c encode -f filename.ext");
-            Console.WriteLine("\tFileEncoder --source buffer --command decode -file filename_ext.txt");
-        }
-    }
-
-    /// <summary>
-    /// Пустая команда, в которой не заданы параметры
-    /// </summary>
-    public class EmptyCommand : Command
-    {
-        /// <inheritdoc/>
-        public override void Execute()
-        {
-            Console.WriteLine("Unknown or empty argument");
-        }
-    }
-
-    /// <summary>
-    /// Команда вывода сообщения об ошибке
-    /// </summary>
-    public class ErrorCommand : Command
-    {
-        /// <summary>
-        /// Текст сообщения об ошибке
-        /// </summary>
-        private readonly string message;
-
-        public ErrorCommand(string message)
-        {
-            this.message = message;
-        }
-
-        /// <inheritdoc/>
-        public override void Execute()
-        {
-            Console.WriteLine(message);
         }
     }
 
@@ -352,8 +323,125 @@ namespace FileEncoder
         [STAThread]
         static void Main(string[] args)
         {
+            args = new[] {"datagrip-2021.1.1.exe"};
+            
             var command = CommandFactory.GetCommand(args);
+            Console.WriteLine($"Created {command.GetType().Name}.");
             command.Execute();
+        }
+    }
+
+    /// <summary>
+    /// Команда вывода версии программы
+    /// </summary>
+    public class PrintVersionCommand : Command
+    {
+        /// <inheritdoc/>
+        public override void Execute()
+        {
+            Console.WriteLine($"{typeof(Program).Assembly.GetName().Version}v");
+        }
+    }
+
+    /// <summary>
+    /// Команда вывода помощи
+    /// </summary>
+    public class PrintHelpCommand : Command
+    {
+        /// <inheritdoc/>
+        public override void Execute()
+        {
+            Console.WriteLine("\t-h|--help\t\tHelp information");
+            Console.WriteLine("\t-v|--version -v\t\tProgram version");
+            Console.WriteLine("\t-s|--source -s\t\tsource of input: buffer or file");
+            Console.WriteLine("\t-f|--file -f\t\tOutput file name");
+            Console.WriteLine("\nExamples:");
+            Console.WriteLine("\tFileEncoder -s file -c encode -f filename.ext");
+            Console.WriteLine("\tFileEncoder --source buffer --command decode -file filename_ext.txt");
+        }
+    }
+
+    /// <summary>
+    /// Пустая команда, в которой не заданы параметры
+    /// </summary>
+    public class EmptyCommand : Command
+    {
+        /// <inheritdoc/>
+        public override void Execute()
+        {
+            Console.WriteLine("Unknown or empty argument");
+        }
+    }
+
+    /// <summary>
+    /// Команда вывода сообщения об ошибке
+    /// </summary>
+    public class ErrorCommand : Command
+    {
+        /// <summary>
+        /// Текст сообщения об ошибке
+        /// </summary>
+        private readonly string message;
+
+        public ErrorCommand(string message)
+        {
+            this.message = message;
+        }
+
+        /// <inheritdoc/>
+        public override void Execute()
+        {
+            Console.WriteLine(message);
+        }
+    }
+    
+    public static class Compressor
+    {
+        private const string TempFileName = "temp.bin";
+        
+        // Сохраняем поток в файл, чтобы избежать OutOfMemoryException при выполнении mso.ToArray()
+        
+        public static byte[] Zip(string str) {
+            var bytes = Encoding.UTF8.GetBytes(str);
+
+            using (var msi = new MemoryStream(bytes))
+            using (var mso = new FileStream(TempFileName, FileMode.Create)) {
+                using (var gs = new GZipStream(mso, CompressionMode.Compress)) {
+                    CopyTo(msi, gs);
+                }
+
+                mso.Close();
+            }
+
+            byte[] result = File.ReadAllBytes(TempFileName);
+            File.Delete(TempFileName);
+            return result;
+        }
+
+        public static string Unzip(byte[] bytes) {
+            using (var msi = new MemoryStream(bytes))
+            using (var mso = new FileStream(TempFileName, FileMode.Create)) {
+                using (var gs = new GZipStream(msi, CompressionMode.Decompress)) {
+                    CopyTo(gs, mso);
+                }
+
+                mso.Close();
+            }
+            
+            byte[] result = File.ReadAllBytes(TempFileName);
+            File.Delete(TempFileName);
+            
+            return Encoding.UTF8.GetString(result);
+        }
+        
+        private static void CopyTo(Stream src, Stream dest) {
+            byte[] bytes = new byte[4096];
+
+            int cnt;
+
+            while ((cnt = src.Read(bytes, 0, bytes.Length)) != 0) {
+                dest.Write(bytes, 0, cnt);
+            }
         }
     }
 

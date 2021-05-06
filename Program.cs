@@ -85,15 +85,18 @@ namespace FileEncoder
                 throw new Exception($"File {BinaryFilePath} not found");
             }
             
+            Console.WriteLine($"Reading file {BinaryFilePath}...");
             Byte[] bytes = File.ReadAllBytes(BinaryFilePath);
+            Console.WriteLine("Converting to base64...");
             string base64String = Convert.ToBase64String(bytes);
+            Console.WriteLine("Saving...");
             WriteBase64String(base64String);
+            Console.WriteLine("Done.");
         }
 
         /// <summary>
         /// Получить путь до файла, который будет хранить base64 строку
         /// </summary>
-        /// <param name="filePath">Путь до оригинального файла</param>
         /// <returns>Путь до файла с base64 строкой</returns>
         private string GetBase64FilePath()
         {
@@ -104,7 +107,6 @@ namespace FileEncoder
         /// <summary>
         /// Сохранить base64 строку (преобразованный оригинальный файл) в файл
         /// </summary>
-        /// <param name="source">Куда сохранить base64 строку</param>
         /// <param name="base64String">Преобразованный в base64 оригинальный файл</param>
         private void WriteBase64String(string base64String)
         {
@@ -140,15 +142,18 @@ namespace FileEncoder
                 BinaryFilePath = FilePath;
             }
 
+            Console.WriteLine("Reading base64 string...");
             string base64String = ReadBase64String();
+            Console.WriteLine("Converting to file...");
             byte[] file = Convert.FromBase64String(base64String);
+            Console.WriteLine("Saving file...");
             File.WriteAllBytes(BinaryFilePath, file);
+            Console.WriteLine("Done.");
         }
 
         /// <summary>
         /// Получить путь, куда сохранить оригинальный файл после преобразования
         /// </summary>
-        /// <param name="filePath">Путь до файла с base64 строкой</param>
         /// <returns>Путь до будущего ориггинального файла</returns>
         private string GetBinaryFilePath()
         {
@@ -159,7 +164,6 @@ namespace FileEncoder
         /// <summary>
         /// Считать base64 строку
         /// </summary>
-        /// <param name="source">Откуда считать base64 строку</param>
         /// <returns>base64 строку - закодированный файл</returns>
         private string ReadBase64String()
         {
@@ -353,6 +357,8 @@ namespace FileEncoder
         static void Main(string[] args)
         {
             var command = CommandFactory.GetCommand(args);
+            
+            Console.WriteLine($"Created {command.GetType().Name}.");
             command.Execute();
         }
     }

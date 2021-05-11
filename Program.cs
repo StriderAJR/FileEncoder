@@ -1,6 +1,7 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
+using System.Text;
 using System.Windows.Forms;
 
 // Все напихано в один файл для удобства копирования программы за один присест
@@ -144,6 +145,12 @@ namespace FileEncoder
 
             Console.WriteLine("Reading base64 string...");
             string base64String = ReadBase64String();
+            
+            if (string.IsNullOrEmpty(base64String))
+            {
+                throw new Exception("Base64 string read is empty");
+            }
+            
             Console.WriteLine("Converting to file...");
             byte[] file = Convert.FromBase64String(base64String);
             Console.WriteLine("Saving file...");

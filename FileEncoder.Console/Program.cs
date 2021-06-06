@@ -240,9 +240,13 @@ namespace FileEncoder
         /// <inheritdoc/>
         public override void Execute()
         {
-            Console.WriteLine(message);
+            Console.WriteLine(this.message);
         }
-    }
+		public override bool Equals(object obj)
+		{
+            return obj is ErrorCommand error && this.message == error.message;              
+		}
+	}
 
     /// <summary>
     /// Фабрика создания команд
@@ -360,6 +364,9 @@ namespace FileEncoder
 
     class Program
     {
+        /// <summary>
+        /// указывает, что потоковой моделью COM для приложения является однопотоковое подразделение (STA).
+        /// </summary>
         [STAThread]
         static void Main(string[] args)
         {
@@ -378,5 +385,12 @@ namespace FileEncoder
     /// <summary>
     /// Ошибка в случае, если не был указан путь до файла
     /// </summary>
-    public class NoFilePathException : Exception { }
+    public class NoFilePathException : Exception 
+    {
+        public override string Message { get; }
+        public NoFilePathException(string meesange)
+		{
+            this.Message = meesange;
+		}
+    }
 }

@@ -1,7 +1,6 @@
 ﻿using System;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Windows.Forms;
 
 // Все напихано в один файл для удобства копирования программы за один присест
@@ -22,7 +21,7 @@ namespace FileEncoder
         /// </summary>
         Buffer
     }
-    
+
     /// <summary>
     /// Общий класс для всех команд
     /// </summary>
@@ -66,6 +65,15 @@ namespace FileEncoder
             Source = source;
             FilePath = filePath;
         }
+
+        /// <summary>
+        /// Получить имя файла.
+        /// </summary>
+        /// <returns></returns>
+        protected string GetFileName()
+        {
+            return Path.GetFileName(FilePath);
+        }
     }
 
     /// <summary>
@@ -85,13 +93,13 @@ namespace FileEncoder
             {
                 throw new Exception($"File {BinaryFilePath} not found");
             }
-            
+
             Console.WriteLine($"Reading file {BinaryFilePath}...");
             Byte[] bytes = File.ReadAllBytes(BinaryFilePath);
             Console.WriteLine("Converting to base64...");
             string base64String = Convert.ToBase64String(bytes);
             Console.WriteLine("Saving...");
-            WriteBase64String(base64String);
+            WriteBase64String(GetFileName(), base64String);
             Console.WriteLine("Done.");
         }
 
@@ -102,17 +110,19 @@ namespace FileEncoder
         private string GetBase64FilePath()
         {
             string outputFileName = Path.GetFileName(FilePath).Replace(".", "_") + ".txt";
-            return Path.Combine(new[] {Path.GetPathRoot(FilePath), outputFileName});
+            return Path.Combine(new[] { Path.GetPathRoot(FilePath), outputFileName });
         }
 
         /// <summary>
         /// Сохранить base64 строку (преобразованный оригинальный файл) в файл
         /// </summary>
         /// <param name="base64String">Преобразованный в base64 оригинальный файл</param>
-        private void WriteBase64String(string base64String)
+        private void WriteBase64String(string fileName, string base64String)
         {
+            string str = $"{fileName};{base64String}";
+
             if (Source == Source.Buffer)
-                Clipboard.SetText(base64String, TextDataFormat.Text);
+                Clipboard.SetText(str, TextDataFormat.Text);
             else
                 File.WriteAllText(Base64FilePath, base64String);
         }
@@ -132,7 +142,7 @@ namespace FileEncoder
             {
                 BinaryFilePath = GetBinaryFilePath();
                 Base64FilePath = FilePath;
-                
+
                 if (!File.Exists(Base64FilePath))
                 {
                     throw new Exception($"File {Base64FilePath} not found");
@@ -144,17 +154,17 @@ namespace FileEncoder
             }
 
             Console.WriteLine("Reading base64 string...");
-            string base64String = ReadBase64String();
-            
+            string base64String = ReadBase64String(out string fileName);
+
             if (string.IsNullOrEmpty(base64String))
             {
                 throw new Exception("Base64 string read is empty");
             }
-            
+
             Console.WriteLine("Converting to file...");
             byte[] file = Convert.FromBase64String(base64String);
             Console.WriteLine("Saving file...");
-            File.WriteAllBytes(BinaryFilePath, file);
+            File.WriteAllBytes(fileName == null ? BinaryFilePath : fileName, file);
             Console.WriteLine("Done.");
         }
 
@@ -165,18 +175,28 @@ namespace FileEncoder
         private string GetBinaryFilePath()
         {
             string fileName = Path.GetFileNameWithoutExtension(BinaryFilePath).Replace("_", ".");
-            return Path.Combine(new[] {Path.GetPathRoot(fileName), fileName});
+            return Path.Combine(new[] { Path.GetPathRoot(fileName), fileName });
         }
 
         /// <summary>
         /// Считать base64 строку
         /// </summary>
         /// <returns>base64 строку - закодированный файл</returns>
-        private string ReadBase64String()
+        private string ReadBase64String(out string fileName)
         {
-            return Source == Source.Buffer 
-                ? Clipboard.GetText(TextDataFormat.Text) 
-                : File.ReadAllText(Base64FilePath);
+            fileName = null;
+            if (Source == Source.Buffer)
+            {
+                string str = Clipboard.GetText(TextDataFormat.Text);
+                string[] parts = str.Split(new char[] { ';' });
+                fileName = parts[0];
+                string base64String = parts[1];
+                return base64String;
+            }
+            else
+            {
+                return File.ReadAllText(Base64FilePath);
+            }
         }
     }
 
@@ -364,7 +384,7 @@ namespace FileEncoder
         static void Main(string[] args)
         {
             var command = CommandFactory.GetCommand(args);
-            
+
             Console.WriteLine($"Created {command.GetType().Name}.");
             command.Execute();
         }
